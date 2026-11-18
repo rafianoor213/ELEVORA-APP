@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://elevora-ai-c0m6nx.v2.appdeploy.ai/api/:splat"
+  status = 200
+  force = true
