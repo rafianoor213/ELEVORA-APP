@@ -12,37 +12,21 @@ import {
   CircleHelp,
   Code2,
   Compass,
-  FileText,
-  GraduationCap,
   LayoutDashboard,
   Lightbulb,
-  LogOut,
   Menu,
-  MessageSquare,
   Rocket,
-  Search,
   Send,
   Settings,
   ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
-  Trophy,
-  UserRound,
   X,
   Zap,
 } from 'lucide-react';
 
 
-async function postAI(payload: Record<string, unknown>) {
-  const response = await fetch('/api/ai', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) throw new Error(`AI service returned ${response.status}`);
-  return { data: await response.json() };
-}
 
 type Profile = {
   name: string;
@@ -167,10 +151,60 @@ const nav = [
     ],
   },
 ];
-function readSaved<T>(key: string, fallback: T): T {
+function safeGetItem(key: string): string | null {
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage errors (e.g. private mode or quota exceeded)
+  }
+}
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+function isStringArray(v: unknown): v is string[] {
+  return Array.isArray(v) && v.every(item => typeof item === 'string');
+}
+function isProfile(v: unknown): v is Profile {
+  return (
+    isRecord(v) &&
+    typeof v.name === 'string' &&
+    typeof v.email === 'string' &&
+    typeof v.education === 'string' &&
+    typeof v.targetRole === 'string' &&
+    isStringArray(v.skills) &&
+    typeof v.hours === 'number'
+  );
+}
+function isProject(v: unknown): v is Project {
+  return (
+    isRecord(v) &&
+    typeof v.title === 'string' &&
+    typeof v.description === 'string' &&
+    typeof v.url === 'string' &&
+    typeof v.github === 'string' &&
+    typeof v.feedback === 'string' &&
+    typeof v.score === 'number' &&
+    typeof v.submitted === 'boolean'
+  );
+}
+function readSaved<T>(
+  key: string,
+  fallback: T,
+  validate?: (v: unknown) => v is T
+): T {
+  try {
+    const raw = safeGetItem(key);
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    if (validate && !validate(parsed)) return fallback;
+    return parsed as T;
   } catch {
     return fallback;
   }
@@ -178,24 +212,28 @@ function readSaved<T>(key: string, fallback: T): T {
 function App() {
   const [page, setPage] = useState('Overview');
   const [profile, setProfile] = useState<Profile>(() =>
-    readSaved('elevora-profile', initialProfile)
+    readSaved('elevora-profile', initialProfile, isProfile)
   );
   const [completed, setCompleted] = useState<string[]>(() =>
-    readSaved('elevora-completed', [])
+    readSaved('elevora-completed', [], isStringArray)
   );
   const [project, setProject] = useState<Project>(() =>
-    readSaved('elevora-project', {
-      title: 'Interactive Task Manager',
-      description: '',
-      url: '',
-      github: '',
-      feedback: '',
-      score: 0,
-      submitted: false,
-    })
+    readSaved(
+      'elevora-project',
+      {
+        title: 'Interactive Task Manager',
+        description: '',
+        url: '',
+        github: '',
+        feedback: '',
+        score: 0,
+        submitted: false,
+      },
+      isProject
+    )
   );
   const [onboarding, setOnboarding] = useState(
-    () => !localStorage.getItem('elevora-onboarded')
+    () => !safeGetItem('elevora-onboarded')
   );
   const [draft, setDraft] = useState<Profile>(profile);
   const [question, setQuestion] = useState('');
@@ -205,13 +243,13 @@ function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [projectBusy, setProjectBusy] = useState(false);
   useEffect(() => {
-    localStorage.setItem('elevora-profile', JSON.stringify(profile));
+    safeSetItem('elevora-profile', JSON.stringify(profile));
   }, [profile]);
   useEffect(() => {
-    localStorage.setItem('elevora-completed', JSON.stringify(completed));
+    safeSetItem('elevora-completed', JSON.stringify(completed));
   }, [completed]);
   useEffect(() => {
-    localStorage.setItem('elevora-project', JSON.stringify(project));
+    safeSetItem('elevora-project', JSON.stringify(project));
   }, [project]);
   const missing = useMemo(
     () =>
@@ -238,73 +276,49 @@ function App() {
     setCompleted(old =>
       old.includes(id) ? old.filter(x => x !== id) : [...old, id]
     );
-  const askAI = async (mode: 'advisor' | 'project') => {
+  const askAI = (mode: 'advisor' | 'project') => {
     const prompt =
       mode === 'advisor'
         ? question
-        : `Review this Frontend Developer learning project submission. Project description: ${project.description}. Live URL: ${project.url || 'Not provided'}. GitHub URL: ${project.github || 'Not provided'}. Give a transparent rubric-based review, strengths, improvements, and next steps. Do not claim to have opened links or inspected code.`;
+        : project.description;
     if (!prompt.trim()) {
       notify('Please add some details first.');
       return;
     }
     setAiBusy(true);
-    try {
-      const result = await postAI({
-        mode,
-        prompt,
-        profile: {
-          targetRole: profile.targetRole,
-          skills: profile.skills,
-          completed,
-        },
-      });
-      setAnswer(
-        result.data.text ||
-          'Your request was processed, but no text was returned.'
-      );
-    } catch {
-      setAnswer(
-        mode === 'advisor'
-          ? 'Based on your Frontend Developer goal, prioritize JavaScript fundamentals, responsive layouts, and Git. Build a small interactive project after each topic. Your next best step is to complete the JavaScript roadmap module, then revisit your skill profile.'
-          : 'Sample rubric feedback (rule-based fallback): Your submission is ready for a manual review. Check semantic HTML, responsive behavior, JavaScript interactions, code organization, and accessibility. Add a clear README and screenshots to strengthen your portfolio. This fallback has not inspected your submitted links.'
-      );
-    } finally {
+    window.setTimeout(() => {
+      if (mode === 'advisor') {
+        const nextSkills = missing.slice(0, 3).join(', ') || 'React and API Integration';
+        setAnswer(
+          `Demo guidance for ${profile.targetRole}: Based on your current skills (${profile.skills.join(', ') || 'Fundamentals'}), prioritize ${nextSkills}. Complete the next roadmap module, build a small interactive project, and add it to your portfolio.`
+        );
+      } else {
+        setAnswer(
+          'Sample rubric feedback: Your submission is saved for review. Check semantic HTML, responsive behavior, JavaScript interactions, code organization, and accessibility. Add a clear README and screenshots to strengthen your portfolio.'
+        );
+      }
       setAiBusy(false);
-    }
+    }, 300);
   };
-  const submitProject = async () => {
+  const submitProject = () => {
     if (!project.description.trim()) {
       notify('Add a short project description before submitting.');
       return;
     }
     setProjectBusy(true);
     setAnswer('');
-    try {
-      const result = await postAI({
-        mode: 'project',
-        prompt: `Review this Frontend Developer learning project submission. Project description: ${project.description}. Live URL: ${project.url || 'Not provided'}. GitHub URL: ${project.github || 'Not provided'}. Give a transparent rubric-based review, strengths, improvements, and next steps. Do not claim to have opened links or inspected code.`,
-        profile: {
-          targetRole: profile.targetRole,
-          skills: profile.skills,
-          completed,
-        },
-      });
-      const feedback = result.data.text || 'No feedback text was returned.';
-      setProject(p => ({ ...p, feedback, score: 78, submitted: true }));
-      notify('Project submitted. Feedback is ready.');
-    } catch {
+    window.setTimeout(() => {
       const feedback =
-        'Sample rubric feedback (rule-based fallback): Your submission is ready for a manual review. Check semantic HTML, responsive behavior, JavaScript interactions, code organization, and accessibility. Add a clear README and screenshots to strengthen your portfolio. This fallback has not inspected your submitted links.';
-      setProject(p => ({ ...p, feedback, score: 72, submitted: true }));
-      notify('Project saved with sample feedback.');
-    } finally {
+        'Sample rubric feedback: Your submission is saved in this demo workspace. Review semantic HTML, responsive layout behavior, JavaScript state updates, code organization, and accessibility. Add a clear README and screenshots to strengthen your portfolio.';
+      setProject(p => ({ ...p, feedback, score: 78, submitted: true }));
       setProjectBusy(false);
-    }
+      notify('Project saved with sample feedback.');
+    }, 300);
   };
   const finishOnboarding = () => {
     if (!draft.name.trim()) return;
     setProfile(draft);
-    localStorage.setItem('elevora-onboarded', 'yes');
+    safeSetItem('elevora-onboarded', 'yes');
     setOnboarding(false);
     notify('Your career workspace is ready.');
   };

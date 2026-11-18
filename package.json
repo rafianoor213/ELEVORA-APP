@@ -4,9 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 0.0.0.0 --port 3000",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host 0.0.0.0 --port 3000",
+    "lint": "tsc --noEmit --jsx react-jsx --moduleResolution bundler --target ES2022 --module ESNext --skipLibCheck --esModuleInterop src/main.tsx"
   },
   "dependencies": {
     "lucide-react": "^0.469.0",
