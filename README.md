@@ -117,7 +117,7 @@ Output:
 
 ### 2. Open in Your Browser
 Navigate to:
-👉 **`http://localhost:8000`**
+👉 **`https://elevoraapp.netlify.app/`**
 
 *(Alternatively, you can also double-click `static/index.html` directly in your browser. The application includes a self-contained client-side data engine that operates 100% interactively even without the server running!)*
 
